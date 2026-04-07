@@ -11,17 +11,17 @@ app = Flask(__name__)
 SLACK_SIGNING_SECRET = os.environ.get("SLACK_SIGNING_SECRET")
 SLACK_BOT_TOKEN = os.environ.get("SLACK_BOT_TOKEN")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
-SYSTEM_PROMPT = os.environ.get("SYSTEM_PROMPT", "You are Darwin, a helpful research assistant.")
+SYSTEM_PROMPT = os.environ.get("SYSTEM_PROMPT", "You are a helpful assistant.")
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 
 processed_events = set()
 lock = threading.Lock()
 
-def verify_slack_signature(request):
-    timestamp = request.headers.get("X-Slack-Request-Timestamp", "")
-    signature = request.headers.get("X-Slack-Signature", "")
-    body = request.get_data(as_text=True)
+def verify_slack_signature(req):
+    timestamp = req.headers.get("X-Slack-Request-Timestamp", "")
+    signature = req.headers.get("X-Slack-Signature", "")
+    body = req.get_data(as_text=True)
     sig_basestring = f"v0:{timestamp}:{body}"
     computed = "v0=" + hmac.new(
         SLACK_SIGNING_SECRET.encode(),
@@ -46,7 +46,6 @@ def send_slack_message(channel, text):
 def handle_event(event, event_id):
     user_message = event.get("text", "")
     channel = event.get("channel")
-
     response = client.messages.create(
         model="claude-sonnet-4-6",
         max_tokens=1000,
@@ -63,23 +62,22 @@ def slack_events():
         return jsonify({"challenge": data["challenge"]})
 
     if not verify_slack_signature(request):
-        print("ERROR: Invalid signature - check SLACK_SIGNING_SECRET")
         return jsonify({"error": "Invalid signature"}), 403
 
     event = data.get("event", {})
     event_id = data.get("event_id", "")
 
-    print(f"Received event: {event.get('type')}, bot_id: {event.get('bot_id')}")
-
     with lock:
         if event_id in processed_events:
-            print(f"Duplicate event: {event_id}")
             return jsonify({"status": "duplicate"}), 200
         processed_events.add(event_id)
 
     if event.get("type") == "app_mention" and not event.get("bot_id"):
-        print(f"Processing mention in channel: {event.get('channel')}")
         thread = threading.Thread(target=handle_event, args=(event, event_id))
         thread.start()
 
     return jsonify({"status": "ok"})
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 3000))
+    app.run(host="0.0.0.0", port=port)
