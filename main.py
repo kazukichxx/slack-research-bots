@@ -44,15 +44,21 @@ def send_slack_message(channel, text):
     urllib.request.urlopen(req)
 
 def handle_event(event, event_id):
-    user_message = event.get("text", "")
-    channel = event.get("channel")
-    response = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=1000,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_message}]
-    )
-    send_slack_message(channel, response.content[0].text)
+    try:
+        user_message = event.get("text", "")
+        channel = event.get("channel")
+        print(f"Calling Claude API for channel: {channel}")
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=1000,
+            system=SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": user_message}]
+        )
+        print(f"Claude responded, sending to Slack...")
+        send_slack_message(channel, response.content[0].text)
+        print(f"Message sent successfully")
+    except Exception as e:
+        print(f"ERROR: {type(e).__name__}: {e}")
 
 @app.route("/slack/events", methods=["POST"])
 def slack_events():
