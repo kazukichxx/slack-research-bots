@@ -1,1 +1,1 @@
-# darwin-bot
+# slack-bot
