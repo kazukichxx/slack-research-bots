@@ -89,52 +89,35 @@ def handle_event(event, event_id):
         user_message = event.get("text", "")
         channel = event.get("channel")
 
-        notion_prompt = ""
-        if NOTION_API_KEY and NOTION_PAPER_DB_ID:
-            notion_prompt = """
-論文や知識をNotionに登録する場合は、返答の最後に以下の形式で記載してください：
-NOTION_REGISTER:
-タイトル: [論文タイトル]
-要約: [3行要約]
-スコア: [1-10の数値]
-END_NOTION
-"""
-
         response = client.messages.create(
             model="claude-sonnet-4-6",
             max_tokens=1500,
-            system=SYSTEM_PROMPT + notion_prompt,
+            system=SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_message}]
         )
 
         reply = response.content[0].text
 
-        if "NOTION_REGISTER:" in reply and "END_NOTION" in reply:
-            notion_part = reply.split("NOTION_REGISTER:")[1].split("END_NOTION")[0].strip()
-            clean_reply = reply.split("NOTION_REGISTER:")[0].strip()
+        # Notion登録キーワードが含まれていたら自動で構造化して登録
+        if NOTION_API_KEY and NOTION_PAPER_DB_ID and ("notion" in user_message.lower() or "登録" in user_message):
+            extract_response = client.messages.create(
+                model="claude-sonnet-4-6",
+                max_tokens=500,
+                system="あなたはデータ抽出専門のAIです。与えられたテキストから論文情報を抽出してJSON形式のみで返してください。他の文章は一切含めないこと。形式: {\"title\": \"論文タイトル\", \"summary\": \"3行要約\", \"score\": 数値}",
+                messages=[{"role": "user", "content": f"以下のテキストから論文情報を抽出してください:\n{reply}"}]
+            )
+            try:
+                extracted = json.loads(extract_response.content[0].text)
+                title = extracted.get("title", "")
+                summary = extracted.get("summary", "")
+                score = int(extracted.get("score", 5))
+                if title:
+                    add_to_notion_paper_db(title, summary, score)
+                    reply += "\n\n✅ Notionの論文・知識DBに登録しました"
+            except Exception as e:
+                print(f"Extraction error: {e}")
 
-            lines = notion_part.split("\n")
-            title = ""
-            summary = ""
-            score = 5
-            for line in lines:
-                if line.startswith("タイトル:"):
-                    title = line.replace("タイトル:", "").strip()
-                elif line.startswith("要約:"):
-                    summary = line.replace("要約:", "").strip()
-                elif line.startswith("スコア:"):
-                    try:
-                        score = int(line.replace("スコア:", "").strip())
-                    except:
-                        score = 5
-
-            if title:
-                add_to_notion_paper_db(title, summary, score)
-                clean_reply += "\n\n✅ Notionの論文・知識DBに登録しました"
-
-            send_slack_message(channel, clean_reply)
-        else:
-            send_slack_message(channel, reply)
+        send_slack_message(channel, reply)
 
     except Exception as e:
         print(f"ERROR: {type(e).__name__}: {e}")
