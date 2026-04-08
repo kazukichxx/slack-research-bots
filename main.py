@@ -83,28 +83,36 @@ def add_to_notion_paper_db(title, summary, score=5):
             print(f"Notion page created successfully")
     except Exception as e:
         print(f"Notion error: {e}")
-
+        
 def handle_event(event, event_id):
     try:
         user_message = event.get("text", "")
         channel = event.get("channel")
 
+        tools = []
+        if "論文" in user_message or "検索" in user_message or "調べ" in user_message:
+            tools = [{"type": "web_search_20250305", "name": "web_search"}]
+
         response = client.messages.create(
             model="claude-sonnet-4-6",
-            max_tokens=1500,
+            max_tokens=2000,
             system=SYSTEM_PROMPT,
+            tools=tools if tools else None,
             messages=[{"role": "user", "content": user_message}]
         )
 
-        reply = response.content[0].text
+        reply_parts = []
+        for block in response.content:
+            if hasattr(block, "text"):
+                reply_parts.append(block.text)
+        reply = "\n".join(reply_parts) if reply_parts else "処理しました"
 
-        # Notion登録キーワードが含まれていたら自動で構造化して登録
         if NOTION_API_KEY and NOTION_PAPER_DB_ID and ("notion" in user_message.lower() or "登録" in user_message):
             extract_response = client.messages.create(
                 model="claude-sonnet-4-6",
                 max_tokens=500,
                 system="あなたはデータ抽出専門のAIです。与えられたテキストから論文情報を抽出してJSON形式のみで返してください。他の文章は一切含めないこと。形式: {\"title\": \"論文タイトル\", \"summary\": \"3行要約\", \"score\": 数値}",
-                messages=[{"role": "user", "content": f"以下のテキストから論文情報を抽出してください:\n{reply}"}]
+                messages=[{"role": "user", "content": f"以下から論文情報を抽出:\n{reply}"}]
             )
             try:
                 extracted = json.loads(extract_response.content[0].text)
