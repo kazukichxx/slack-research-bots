@@ -145,9 +145,9 @@ def add_to_notion_gap_db(title, rq="", limitation="", approach="", priority="高
 
 def extract_and_register_notion(user_message, reply, db_type):
     if db_type == "paper":
-        system = '与えられたテキストから論文情報を抽出し、JSONのみ返してください。形式: {"title":"","summary":"","score":5,"author":"","url":"","year":null,"tags":[],"insight":""}'
+        system = '与えられたテキストから論文情報を抽出し、JSONのみ返してください。必ずオブジェクト形式で。形式: {"title":"","summary":"","score":5,"author":"","url":"","year":null,"tags":[],"insight":""}'
     else:
-        system = '与えられたテキストからリサーチギャップ情報を抽出し、JSONのみ返してください。有効タグ:["プロセスマイニング","デジタルツイン","因果推論","ベイジアンネットワーク","医療","製造業","XAI"]。形式: {"title":"ギャップタイトル","rq":"リサーチクエスチョン","limitation":"既存研究の限界","approach":"提案アプローチ","priority":"高","tags":[]}'
+        system = '与えられたテキストからリサーチギャップ情報を抽出し、JSONのみ返してください。複数ある場合も必ず単一オブジェクトで最重要の1件のみ返すこと。有効タグ:["プロセスマイニング","デジタルツイン","因果推論","ベイジアンネットワーク","医療","製造業","XAI"]。形式: {"title":"ギャップタイトル","rq":"リサーチクエスチョン","limitation":"既存研究の限界","approach":"提案アプローチ","priority":"高","tags":[]}'
 
     extract_response = client.messages.create(
         model="claude-sonnet-4-6",
@@ -156,12 +156,25 @@ def extract_and_register_notion(user_message, reply, db_type):
         messages=[{"role": "user", "content": f"以下から情報を抽出:\n{reply[:3000]}"}]
     )
     raw = extract_response.content[0].text.strip()
+
+    # コードブロック除去
     if "```" in raw:
         for part in raw.split("```"):
             part = part.strip().lstrip("json").strip()
-            if part.startswith("{"):
+            if part.startswith("{") or part.startswith("["):
                 raw = part
                 break
+
+    # 配列の場合は最初の要素を取得
+    raw = raw.strip()
+    if raw.startswith("["):
+        try:
+            arr = json.loads(raw)
+            if arr and isinstance(arr, list):
+                raw = json.dumps(arr[0])
+        except:
+            pass
+
     try:
         extracted = json.loads(raw.strip())
         if db_type == "paper":
