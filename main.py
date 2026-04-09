@@ -238,17 +238,17 @@ def handle_event(event, event_id):
         # Notion登録処理
         should_register = NOTION_API_KEY and "登録" in user_message and len(reply) > 50
 
-        if should_register:
-            # ギャップDB登録（ダーウィン向け）
-            if NOTION_GAP_DB_ID and any(kw in user_message for kw in ["ギャップ", "リサーチギャップ", "gap", "Gap"]):
-                success = extract_and_register_notion(user_message, reply, "gap")
-                if success:
-                    reply += "\n\n✅ Notionのリサーチギャップに登録しました"
-            # 論文DB登録（Alexandria向け）
-            elif NOTION_PAPER_DB_ID and any(kw in user_message for kw in ["論文", "notion", "paper"]):
-                success = extract_and_register_notion(user_message, reply, "paper")
-                if success:
-                    reply += "\n\n✅ Notionの論文・知識DBに登録しました"
+if should_register:
+    # ギャップDB登録を優先（ダーウィン向け）
+    if NOTION_GAP_DB_ID and any(kw in SYSTEM_PROMPT for kw in ["ストラテジスト", "Darwin", "ダーウィン"]):
+        success = extract_and_register_notion(user_message, reply, "gap")
+        if success:
+            reply += "\n\n✅ Notionのリサーチギャップに登録しました"
+    # 論文DB登録（Alexandria向け）
+    elif NOTION_PAPER_DB_ID and any(kw in user_message for kw in ["論文", "paper"]):
+        success = extract_and_register_notion(user_message, reply, "paper")
+        if success:
+            reply += "\n\n✅ Notionの論文・知識DBに登録しました"
 
         send_slack_message(channel, reply)
 
